@@ -1,5 +1,5 @@
 window.PORTAL_CONFIG=Object.freeze({
-  domain:"ctpa-workplace.screenings4u.com",
+  domain:"ctpa-non-dot.screenings4u.com",
   portalCode:"ctpa_workforce",
   label:"Workforce NON DOT",
   kind:"ctpa",
