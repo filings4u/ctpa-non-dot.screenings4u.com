@@ -1,1 +1,31 @@
-window.PORTAL_CONFIG=Object.freeze({"domain":"ctpa-workforce.screenings4u.com","portalCode":"ctpa_workforce","label":"screenings4u Workforce C/TPA","kind":"ctpa","surface":"workforce","workforceUrl":"https://elpbnytpciqnbexiaebp.supabase.co","workforceKey":"sb_publishable_xVI6Mjkk1bNVMGHZCPuK6w_8FSHKdkC","pages":[{"id":"dashboard","label":"Dashboard","icon":"\u2302"},{"id":"employers","label":"Employers","icon":"\u25a6"},{"id":"people","label":"Employees / NON-DOT Drivers","icon":"\u25ce"},{"id":"programs","label":"NON-DOT Programs","icon":"\u2261"},{"id":"pools","label":"NON-DOT Pools","icon":"\u25c9"},{"id":"selections","label":"Random Selections","icon":"\u2726"},{"id":"testing","label":"NON-DOT Testing","icon":"\u25c6"},{"id":"results","label":"NON-DOT Results","icon":"\u2713"},{"id":"compliance","label":"NON-DOT Compliance","icon":"\u2691"},{"id":"documents","label":"Documents","icon":"\u25a4"},{"id":"reports","label":"Reports","icon":"\u25a5"},{"id":"notifications","label":"Notifications","icon":"\u25cf"},{"id":"billing","label":"Billing","icon":"$"},{"id":"team","label":"Team","icon":"\u265f"},{"id":"locations","label":"Locations","icon":"\u2316"},{"id":"branding","label":"Branding","icon":"\u2726"},{"id":"integrations","label":"Integrations","icon":"\u2194"},{"id":"audit-history","label":"Audit History","icon":"\u2263"}]});
+window.PORTAL_CONFIG=Object.freeze({
+  domain:"ctpa-workplace.screenings4u.com",
+  portalCode:"ctpa_workforce",
+  label:"Workforce NON DOT",
+  kind:"ctpa",
+  surface:"workforce",
+  workforceUrl:"https://elpbnytpciqnbexiaebp.supabase.co",
+  workforceKey:"sb_publishable_xVI6Mjkk1bNVMGHZCPuK6w_8FSHKdkC"
+});
+(()=>{'use strict';
+ const C=window.PORTAL_CONFIG;
+ const WORKSPACE_KEY='s4u_ctpa_workforce_workspace_v1';
+ const AUTH_KEY='s4u_ctpa_workforce_auth';
+ const LEGACY_KEYS=['s4u_ctpa_workforce_membership','s4u_ctpa_workforce_subscription'];
+ const LEGACY_SUPABASE_PREFIX='sb-elpbnytpciqnbexiaebp-';
+ function clearLegacyWorkspace(){try{for(const k of LEGACY_KEYS)localStorage.removeItem(k)}catch{}}
+ function readWorkspace(){try{const x=JSON.parse(localStorage.getItem(WORKSPACE_KEY)||'null');if(!x||typeof x!=='object')return null;if(!x.ctpa_id||!x.subscription_id)return null;return x}catch{return null}}
+ function writeWorkspace(x){if(!x?.ctpa_id||!x?.subscription_id)throw new Error('A complete C/TPA workspace selection is required.');const clean={user_id:x.user_id||null,ctpa_id:String(x.ctpa_id),organization_id:x.organization_id?String(x.organization_id):null,membership_id:x.membership_id?String(x.membership_id):null,subscription_id:String(x.subscription_id),plan_code:x.plan_code||null,plan_name:x.plan_name||null,organization_name:x.organization_name||null,powered_by:x.powered_by||null,selected_at:new Date().toISOString()};localStorage.setItem(WORKSPACE_KEY,JSON.stringify(clean));clearLegacyWorkspace();return clean}
+ function clearWorkspace(){try{localStorage.removeItem(WORKSPACE_KEY);clearLegacyWorkspace()}catch{}}
+ function clearLegacyAuth(){try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i)||'';if(k.startsWith(LEGACY_SUPABASE_PREFIX))localStorage.removeItem(k)}}catch{}}
+ window.S4UCTPAWorkspace=Object.freeze({key:WORKSPACE_KEY,read:readWorkspace,set:writeWorkspace,clear:clearWorkspace,clearLegacyAuth});
+ window.S4UGetSupabaseClient=function(){
+   if(window.__S4U_CTPA_CLIENT__)return window.__S4U_CTPA_CLIENT__;
+   if(!window.supabase?.createClient)throw new Error('Supabase client library is not loaded.');
+   window.__S4U_CTPA_CLIENT__=window.supabase.createClient(C.workforceUrl,C.workforceKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:AUTH_KEY}});
+   return window.__S4U_CTPA_CLIENT__;
+ };
+ window.S4UCTPAPayload=function(body={}){const w=readWorkspace();return {...body,ctpa_id:body.ctpa_id||w?.ctpa_id||undefined,subscription_id:body.subscription_id||w?.subscription_id||undefined,membership_id:body.membership_id||w?.membership_id||undefined}};
+ clearLegacyWorkspace();
+ if('serviceWorker' in navigator){addEventListener('load',()=>navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.unregister()))).catch(()=>{}),{once:true})}if('caches' in window){caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))).catch(()=>{})}
+})();

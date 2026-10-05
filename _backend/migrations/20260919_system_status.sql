@@ -1,2 +1,3 @@
--- System Status remains a platform-wide read-only page.
--- No service-specific customer or compliance data is read by status.html.
+-- Creates public system status components/incidents/update history.
+-- Applied to project wyezpseboxbmkedvbmyx on 2026-09-19.
+-- See live database migration history for canonical SQL.

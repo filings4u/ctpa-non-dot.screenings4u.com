@@ -1,35 +1,11 @@
-(async()=>{
-  const C=window.PORTAL_CONFIG;
-  const sb=window.supabase.createClient(C.workforceUrl,C.workforceKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
-  const {data:{session}}=await sb.auth.getSession();
-  if(!session){location.replace('/login.html');return}
-
-  const qs=new URLSearchParams(location.search);
-  const membershipId=qs.get('membership_id')||qs.get('id')||'';
-  const subscriptionId=qs.get('subscription_id')||'';
-  const body={action:'session_context',portal_code:C.portalCode,requested_portal_code:C.portalCode};
-  if(membershipId)body.membership_id=membershipId;
-  if(subscriptionId)body.subscription_id=subscriptionId;
-
-  const r=await fetch(`${C.workforceUrl}/functions/v1/${C.kind==='ctpa'?'nondot-ctpa-portal':C.kind==='employer'?'workforce-employer-operations':'workforce-employer-employee-access'}`,{
-    method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`,'apikey':C.workforceKey},
-    body:JSON.stringify(body)
-  });
-  const d=await r.json().catch(()=>({}));
-  if(!r.ok){document.getElementById('msg').textContent=d.error||d.reason||'Unable to load workspace.';return}
-
-  if(d.requires_workspace_selection){
-    const rows=d.workspaces||[];
-    document.getElementById('msg').textContent='Choose the subscription plan you want to use.';
-    document.getElementById('choices').innerHTML=rows.map(w=>{
-      const href=`/workspace.html?membership_id=${encodeURIComponent(w.membership_id||'')}&subscription_id=${encodeURIComponent(w.subscription_id||'')}`;
-      return `<a class="card workspace-choice" style="display:block;margin:8px 0" href="${href}"><strong>${w.plan_name||w.plan_code||'Workforce Plan'}</strong></a>`;
-    }).join('');
-    return;
-  }
-
-  if(d.membership?.id)localStorage.setItem(`s4u_${C.portalCode}_membership`,d.membership.id);
-  if(d.subscription?.id)localStorage.setItem(`s4u_${C.portalCode}_subscription`,d.subscription.id);
-  location.replace('/dashboard.html');
+(async()=>{'use strict';
+const C=window.PORTAL_CONFIG,sb=window.S4UGetSupabaseClient(),W=window.S4UCTPAWorkspace,$=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const msg=(t,b=false)=>{const e=$('msg');if(!e)return;e.textContent=t;e.className='workspace-msg '+(b?'error':'ok')};
+W.clear();
+const {data:{session},error:sessionError}=await sb.auth.getSession();if(sessionError||!session){location.replace('/login.html?reason=session');return}
+const signOutAll=$('signOutAll');if(signOutAll)signOutAll.onclick=async()=>{W.clear();try{await sb.auth.signOut({scope:'local'})}catch{};location.replace('/login.html')};
+async function call(body={}){const {data:{session:current}}=await sb.auth.getSession();if(!current)return {r:{ok:false,status:401},d:{error:'Authentication required.'}};const r=await fetch(C.workforceUrl+'/functions/v1/nondot-workforce-ctpa-portal',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+current.access_token,'apikey':C.workforceKey},body:JSON.stringify(body)});return {r,d:await r.json().catch(()=>({}))}}
+function card(w,i){const org=w.organization_name||'C/TPA Account',plan=w.plan_name||w.plan_code||'C/TPA Subscription',role=String(w.role_code||'member').replaceAll('_',' '),powered=w.powered_by||'Workforce NON DOT',short=(org.match(/\b\w/g)||['C','T']).slice(0,2).join('').toUpperCase();return `<article class="workspace-card"><div class="workspace-card-top"><div class="workspace-mark">${esc(short)}</div><div><h2>${esc(org)}</h2><div class="workspace-plan">${esc(plan)}</div><div class="workspace-powered">Powered by ${esc(powered)}</div></div></div><div class="workspace-meta"><div><span>Role</span><strong>${esc(role)}</strong></div><div><span>Status</span><strong>${esc(w.subscription_status||'active')}</strong></div><div><span>Plan</span><strong>${esc(w.plan_code||'')}</strong></div><div><span>Portal</span><strong>C/TPA Workplace</strong></div></div><button class="workspace-enter" data-i="${i}">Enter C/TPA Portal</button></article>`}
+async function choose(w,b){b.disabled=true;msg('Opening selected C/TPA account…');const {r,d}=await call({ctpa_id:w.ctpa_id,subscription_id:w.subscription_id});if(d.checkout_required&&d.checkout_url){location.replace(d.checkout_url);return}if(!r.ok||!d.ok){b.disabled=false;msg(d.error||'This C/TPA account is not available.',true);return}const saved=W.set({user_id:session.user.id,ctpa_id:d.ctpa?.id||w.ctpa_id,organization_id:d.organization?.id||w.organization_id,membership_id:d.membership?.id||w.membership_id,subscription_id:d.subscription?.id||w.subscription_id,plan_code:d.plan?.code||w.plan_code,plan_name:d.plan?.name||w.plan_name,organization_name:d.organization?.dba_name||d.organization?.legal_name||w.organization_name,powered_by:w.powered_by});try{sessionStorage.setItem('s4u_ctpa_workforce_verified_ctx_v2',JSON.stringify({saved_at:Date.now(),user_id:session.user.id,ctpa_id:saved.ctpa_id,subscription_id:saved.subscription_id,ctx:d}))}catch{};location.replace('/dashboard.html')}
+const {r,d}=await call();document.documentElement.classList.remove('s4u-auth-pending');document.body.classList.remove('loading');if(r.status===401){W.clear();location.replace('/login.html?reason=session');return}if(!r.ok){msg(d.error||'Unable to load C/TPA accounts.',true);$('choices').innerHTML='<div class="workspace-empty">No C/TPA account is available for this login.</div>';return}let rows=Array.isArray(d.workspaces)?d.workspaces:[];if(!rows.length&&d.ok&&d.ctpa&&d.subscription){rows=[{ctpa_id:d.ctpa.id,organization_id:d.organization?.id||d.ctpa.organization_id,membership_id:d.membership?.id||null,subscription_id:d.subscription.id,plan_code:d.plan?.code||null,plan_name:d.plan?.name||null,organization_name:d.organization?.dba_name||d.organization?.legal_name||d.ctpa.name||'C/TPA Account',role_code:d.role?.code||d.membership?.role_code||'member',subscription_status:d.subscription.status||'active',powered_by:'Workforce NON DOT'}]}if(!rows.length){msg('No C/TPA account is available for this login.',true);$('choices').innerHTML='<div class="workspace-empty">No C/TPA account is available for this login.</div>';return}msg(rows.length===1?'Select your C/TPA account to continue.':'Select the C/TPA account you want to manage.');$('choices').innerHTML=rows.map(card).join('');document.querySelectorAll('.workspace-enter').forEach(b=>b.onclick=()=>choose(rows[Number(b.dataset.i)],b));
 })();

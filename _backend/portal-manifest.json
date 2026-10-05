@@ -1,0 +1,16 @@
+{
+  "portal_directory": "ctpa-non-dot",
+  "portal_code": "ctpa_workforce",
+  "domain": "ctpa-non-dot.screenings4u.com",
+  "label": "Workforce NON DOT",
+  "kind": "ctpa",
+  "runtime_function": "nondot-workforce-ctpa-portal",
+  "runtime_routes": {"session": "/session", "actions": "/", "distribution": "/distribution"},
+  "account_type": "dot_ctpa",
+  "plan_rule": {"type": "prefix", "value": "dot_ctpa_"},
+  "validation_profile": "ctpa_management",
+  "isolated_runtime": true,
+  "shared_runtime_dependencies": [],
+  "database_note": "Business data remains centralized; C/TPA portal executable runtime is isolated in nondot-workforce-ctpa-portal.",
+  "role_model": {"type": "organization_memberships", "accepted_roles": ["ctpa_admin", "ctpa_staff"]}
+}
