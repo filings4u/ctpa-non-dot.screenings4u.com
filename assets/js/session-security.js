@@ -3,7 +3,7 @@ const P=location.pathname.split('/').pop()?.toLowerCase()||'index.html';
 const PUBLIC=new Set(['login.html','auth-handoff.html','404.html','forgot-password.html','reset-password.html','index.html']);
 if(PUBLIC.has(P)){document.documentElement.classList.remove('s4u-auth-pending');return}
 const C=window.PORTAL_CONFIG,W=window.S4UCTPAWorkspace,sb=window.S4UGetSupabaseClient?.();
-const IDLE=10*60*1000,WARN=60*1000,KEY_LAST='s4u_ctpa_workforce_idle_last',KEY_CTX='s4u_ctpa_workforce_verified_ctx_v2',CTX_TTL=30*60*1000;let last=Date.now(),warnOpen=false,timer=null,countTimer=null,activityBound=false;
+const IDLE=10*60*1000,WARN=60*1000,KEY_LAST='s4u_ctpa_workforce_idle_last',KEY_CTX='s4u_ctpa_workforce_verified_ctx_v3',CTX_TTL=30*60*1000;let last=Date.now(),warnOpen=false,timer=null,countTimer=null,activityBound=false;
 let readyResolve,readyReject;window.S4UCTPAAuthReady=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject});
 function safeLast(){const n=Number(localStorage.getItem(KEY_LAST)||0);return Number.isFinite(n)&&n>0?n:last}
 function setLast(){last=Date.now();try{localStorage.setItem(KEY_LAST,String(last))}catch{};hideWarn();schedule()}
@@ -15,7 +15,7 @@ function hideWarn(){warnOpen=false;document.getElementById('s4u-idle-modal')?.cl
 function schedule(){clearTimeout(timer);const age=Date.now()-safeLast();if(age>=IDLE){logout();return}if(age>=IDLE-WARN)showWarn();timer=setTimeout(schedule,Math.min(1000,Math.max(250,(IDLE-WARN)-age)))}
 function bindActivity(){if(activityBound)return;activityBound=true;['pointerdown','keydown','touchstart','scroll'].forEach(ev=>addEventListener(ev,()=>{if(!warnOpen)setLast()},{passive:true}));addEventListener('storage',e=>{if(e.key===KEY_LAST){last=safeLast();hideWarn();schedule()}})}
 
-function readCachedContext(session,w){try{const c=JSON.parse(sessionStorage.getItem(KEY_CTX)||'null');if(!c||Date.now()-Number(c.saved_at||0)>CTX_TTL)return null;if(c.user_id!==session.user.id||c.ctpa_id!==w.ctpa_id||c.subscription_id!==w.subscription_id)return null;return c.ctx||null}catch{return null}}
+function readCachedContext(session,w){try{const c=JSON.parse(sessionStorage.getItem(KEY_CTX)||'null');if(!c||Date.now()-Number(c.saved_at||0)>CTX_TTL)return null;if(c.user_id!==session.user.id||c.ctpa_id!==w.ctpa_id||c.subscription_id!==w.subscription_id)return null;return c.ctx?.has_access===true&&c.ctx?.ctpa?.id===w.ctpa_id&&c.ctx?.subscription?.id===w.subscription_id?c.ctx:null}catch{return null}}
 function writeCachedContext(session,w,ctx){try{sessionStorage.setItem(KEY_CTX,JSON.stringify({saved_at:Date.now(),user_id:session.user.id,ctpa_id:w.ctpa_id,subscription_id:w.subscription_id,ctx}))}catch{}}
 function finishAuth(ctx){last=safeLast();if(Date.now()-last>=IDLE){logout();return false}try{localStorage.setItem(KEY_LAST,String(last))}catch{};bindActivity();schedule();document.documentElement.classList.remove('s4u-auth-pending');window.S4UCTPAVerifiedContext=ctx;readyResolve(ctx);window.dispatchEvent(new CustomEvent('s4u:dot-authenticated',{detail:ctx}));return true}
 async function guard(){try{
@@ -26,13 +26,13 @@ async function guard(){try{
   if(!w||w.user_id!==session.user.id){W.clear();try{sessionStorage.removeItem(KEY_CTX)}catch{};location.replace('https://portal.screenings4u.com/selector.html');return}
   const cached=readCachedContext(session,w);
   if(cached){finishAuth(cached);return}
-  const r=await fetch(C.workforceUrl+'/functions/v1/nondot-workforce-ctpa-portal/session',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token,'apikey':C.workforceKey},body:JSON.stringify({portal_code:'ctpa_workforce',action:'workspace',ctpa_id:w.ctpa_id,subscription_id:w.subscription_id,page:P.replace('.html','')})});
+  const r=await fetch(C.workforceUrl+'/functions/v1/nondot-workforce-session-context',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token,'apikey':C.workforceKey},body:JSON.stringify({portal_code:'ctpa_workforce',action:'workspace',ctpa_id:w.ctpa_id,subscription_id:w.subscription_id,page:P.replace('.html','')})});
   const d=await r.json().catch(()=>({}));
   if(d.checkout_required&&d.checkout_url){document.documentElement.classList.remove('s4u-auth-pending');readyReject(Object.assign(new Error('Subscription renewal required.'),{status:402,payload:d}));renewModal(d);return}
-  if(!r.ok||d.error||d.has_access===false){
+  if(!r.ok||d.error||d.has_access!==true||d.ctpa?.id!==w.ctpa_id||d.subscription?.id!==w.subscription_id){
     try{sessionStorage.removeItem(KEY_CTX)}catch{};
     if(r.status===401){W.clear();try{await sb.auth.signOut({scope:'local'})}catch{};location.replace('https://portal.screenings4u.com/?reason=session');return}
-    W.clear();document.documentElement.classList.remove('s4u-auth-pending');readyReject(Object.assign(new Error(d.error||'Unable to verify C/TPA access.'),{status:r.status,payload:d}));document.body.classList.remove('loading');document.body.innerHTML='<main class="login-card"><img class="login-logo" src="images/workforce-non-dot.png?v=20261005-nondot10"><h1>C/TPA account unavailable</h1><p>'+String(d.error||'Unable to verify C/TPA access.').replace(/[<>]/g,'')+'</p><a class="btn primary" href="https://portal.screenings4u.com/selector.html">Choose C/TPA Account</a></main>';return
+    W.clear();document.documentElement.classList.remove('s4u-auth-pending');readyReject(Object.assign(new Error(d.error||'The selected C/TPA workspace did not match the authorized session.'),{status:r.status,payload:d}));document.body.classList.remove('loading');document.body.innerHTML='<main class="login-card"><img class="login-logo" src="images/workforce-non-dot.png?v=20261005-nondot10"><h1>C/TPA account unavailable</h1><p>'+String(d.error||'Unable to verify C/TPA access.').replace(/[<>]/g,'')+'</p><a class="btn primary" href="https://portal.screenings4u.com/selector.html">Choose C/TPA Account</a></main>';return
   }
   W.set({user_id:session.user.id,ctpa_id:d.ctpa?.id||w.ctpa_id,organization_id:d.organization?.id||w.organization_id,membership_id:d.membership?.id||w.membership_id,subscription_id:d.subscription?.id||w.subscription_id,plan_code:d.plan?.code||w.plan_code,plan_name:d.plan?.name||w.plan_name,organization_name:d.organization?.dba_name||d.organization?.legal_name||w.organization_name,powered_by:w.powered_by});
   const freshW=W.read();writeCachedContext(session,freshW,d);finishAuth(d);
