@@ -17,15 +17,36 @@ function bindActivity(){if(activityBound)return;activityBound=true;['pointerdown
 
 function readCachedContext(session,w){try{const c=JSON.parse(sessionStorage.getItem(KEY_CTX)||'null');if(!c||Date.now()-Number(c.saved_at||0)>CTX_TTL)return null;if(c.user_id!==session.user.id||c.ctpa_id!==w.ctpa_id||c.subscription_id!==w.subscription_id)return null;return c.ctx?.has_access===true&&c.ctx?.ctpa?.id===w.ctpa_id&&c.ctx?.subscription?.id===w.subscription_id?c.ctx:null}catch{return null}}
 function writeCachedContext(session,w,ctx){try{sessionStorage.setItem(KEY_CTX,JSON.stringify({saved_at:Date.now(),user_id:session.user.id,ctpa_id:w.ctpa_id,subscription_id:w.subscription_id,ctx}))}catch{}}
-function finishAuth(ctx){last=safeLast();if(Date.now()-last>=IDLE){logout();return false}try{localStorage.setItem(KEY_LAST,String(last))}catch{};bindActivity();schedule();document.documentElement.classList.remove('s4u-auth-pending');window.S4UCTPAVerifiedContext=ctx;readyResolve(ctx);window.dispatchEvent(new CustomEvent('s4u:dot-authenticated',{detail:ctx}));return true}
+async function recheckAccess(){
+  const w=W.read();
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session||!w){await logout('revoked');return}
+  try{
+    const r=await fetch(C.workforceUrl+'/functions/v1/nondot-workforce-session-context',{
+      method:'POST',cache:'no-store',
+      headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token,apikey:C.workforceKey},
+      body:JSON.stringify({portal_code:'ctpa_workforce',action:'workspace',ctpa_id:w.ctpa_id,subscription_id:w.subscription_id})
+    });
+    const d=await r.json().catch(()=>({}));
+    if(r.status===401||r.status===403||d.reason_code==='PORTAL_ACCESS_REVOKED'||d.has_access===false){
+      await logout('revoked');
+    }
+  }catch(e){console.warn('Unable to recheck portal authorization',e)}
+}
+function startAccessWatch(){
+  if(window.__s4uWorkforceAccessWatch)return;
+  window.__s4uWorkforceAccessWatch=setInterval(recheckAccess,5000);
+  addEventListener('focus',recheckAccess);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)recheckAccess()});
+}
+function finishAuth(ctx){last=safeLast();if(Date.now()-last>=IDLE){logout();return false}try{localStorage.setItem(KEY_LAST,String(last))}catch{};bindActivity();schedule();document.documentElement.classList.remove('s4u-auth-pending');window.S4UCTPAVerifiedContext=ctx;startAccessWatch();readyResolve(ctx);window.dispatchEvent(new CustomEvent('s4u:dot-authenticated',{detail:ctx}));return true}
 async function guard(){try{
   if(!sb||!C?.workforceUrl||C.portalCode!=='ctpa_workforce')throw Object.assign(new Error('Portal configuration is invalid.'),{status:500});
   const {data:{session},error}=await sb.auth.getSession();
   if(error||!session){W.clear();try{sessionStorage.removeItem(KEY_CTX)}catch{};location.replace('https://portal.screenings4u.com/?reason=session');return}
   const w=W.read();
   if(!w||w.user_id!==session.user.id){W.clear();try{sessionStorage.removeItem(KEY_CTX)}catch{};location.replace('https://portal.screenings4u.com/selector.html');return}
-  const cached=readCachedContext(session,w);
-  if(cached){finishAuth(cached);return}
+  // Always validate workspace access with the server; cached access cannot override a revocation.
   const r=await fetch(C.workforceUrl+'/functions/v1/nondot-workforce-session-context',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token,'apikey':C.workforceKey},body:JSON.stringify({portal_code:'ctpa_workforce',action:'workspace',ctpa_id:w.ctpa_id,subscription_id:w.subscription_id,page:P.replace('.html','')})});
   const d=await r.json().catch(()=>({}));
   if(d.checkout_required&&d.checkout_url){document.documentElement.classList.remove('s4u-auth-pending');readyReject(Object.assign(new Error('Subscription renewal required.'),{status:402,payload:d}));renewModal(d);return}
