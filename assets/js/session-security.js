@@ -20,7 +20,7 @@ function writeCachedContext(session,w,ctx){try{sessionStorage.setItem(KEY_CTX,JS
 async function recheckAccess(){
   const w=W.read();
   const {data:{session}}=await sb.auth.getSession();
-  if(!session||!w){await logout('revoked');return}
+  if(!session||!w)return;
   try{
     const r=await fetch(C.workforceUrl+'/functions/v1/nondot-workforce-session-context',{
       method:'POST',cache:'no-store',
@@ -28,7 +28,7 @@ async function recheckAccess(){
       body:JSON.stringify({portal_code:'ctpa_workforce',action:'workspace',ctpa_id:w.ctpa_id,subscription_id:w.subscription_id})
     });
     const d=await r.json().catch(()=>({}));
-    if(r.status===401||r.status===403||d.reason_code==='PORTAL_ACCESS_REVOKED'||d.has_access===false){
+    if(d.reason_code==='PORTAL_ACCESS_REVOKED'){
       await logout('revoked');
     }
   }catch(e){console.warn('Unable to recheck portal authorization',e)}
