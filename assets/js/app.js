@@ -73,7 +73,7 @@ async function invoke(name,body={}){
     fn='nondot-workforce-ctpa-pools';
     cleanPayload={...body,ctpa_id:w.ctpa_id,subscription_id:w.subscription_id,membership_id:w.membership_id||undefined};
   }
-  const r=await fetch(`${C.workforceUrl}/functions/v1/${fn}`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.access_token}`,'apikey':C.workforceKey},body:JSON.stringify(cleanPayload)});const d=await r.json().catch(()=>({}));const em=typeof d.error==='string'?d.error:(d.error?.message||d.message||d.details||d.hint||'');if(!r.ok||d.error)throw Object.assign(new Error(em||`Request failed (${r.status}).`),{status:r.status,payload:d});return d;
+  const r=await fetch(`${C.workforceUrl}/functions/v1/${fn}`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.access_token}`,'apikey':C.workforceKey},body:JSON.stringify(cleanPayload)});const d=await r.json().catch(()=>({}));const detail=[d.error,d.message,d.details,d.hint].find(x=>typeof x==='string'&&x.trim())||[d.error,d.message].find(x=>x&&typeof x.message==='string')?.message||'';const em=String(detail||`Request failed (${r.status}).`);if(!r.ok||d.error)throw Object.assign(new Error(em||`Request failed (${r.status}).`),{status:r.status,payload:d});return d;
 }
 async function access(){if(window.S4UCTPAVerifiedContext)return window.S4UCTPAVerifiedContext;if(window.S4UCTPAAuthReady)return await window.S4UCTPAAuthReady;throw Object.assign(new Error('Authentication verification is unavailable.'),{status:500})}
 
